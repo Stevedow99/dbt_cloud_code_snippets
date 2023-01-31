@@ -1,0 +1,239 @@
+{
+	"name": "PL_Run_DBT_Job",
+	"properties": {
+		"activities": [
+			{
+				"name": "Web_Get_dbt_token",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": true,
+					"secureInput": true
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": {
+						"value": "<<KV value>>",
+						"type": "Expression"
+					},
+					"method": "GET",
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://vault.azure.net"
+					}
+				}
+			},
+			{
+				"name": "run_dbt_job",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Web_Get_dbt_token",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": {
+						"value": "https://cloud.getdbt.com/api/v2/accounts/@{pipeline().parameters.dbt_account_id}/jobs/@{pipeline().parameters.dbt_job_id}/run/",
+						"type": "Expression"
+					},
+					"method": "POST",
+					"headers": {
+						"Accept": "application/json",
+						"Authorization": {
+							"value": "Token @{activity('Web_Get_dbt_token').output.value}",
+							"type": "Expression"
+						}
+					},
+					"body": {
+						"value": "{\"cause\" : \"daily automated ADF job for the pipeline @{pipeline().Pipeline} and the date of @{convertTimeZone(pipeline().TriggerTime, 'UTC', 'Eastern Standard Time')}\"}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "get_dbt_run_id",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "run_dbt_job",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "dbt_run_id",
+					"value": {
+						"value": "@string(activity('run_dbt_job').output.data.id)",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "until_dbt_job_finishes",
+				"type": "Until",
+				"dependsOn": [
+					{
+						"activity": "get_dbt_run_id",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(or(equals(variables('dbt_run_status'),'10'),equals(variables('dbt_run_status'),'20')),equals(variables('dbt_run_status'),'30'))",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "wait_120_more_seconds",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 120
+							}
+						},
+						{
+							"name": "get_dbt_run_status",
+							"type": "WebActivity",
+							"dependsOn": [
+								{
+									"activity": "wait_120_more_seconds",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"url": {
+									"value": "https://cloud.getdbt.com/api/v2/accounts/@{pipeline().parameters.dbt_account_id}/runs/@{variables('dbt_run_id')}/",
+									"type": "Expression"
+								},
+								"method": "GET",
+								"headers": {
+									"Accept": "application/json",
+									"Authorization": {
+										"value": "Token @{activity('Web_Get_dbt_token').output.value}",
+										"type": "Expression"
+									}
+								},
+								"body": {
+									"value": "{\"cause\" : \"daily automated ADF job for the pipeline @{pipeline().Pipeline} and the date of @{convertTimeZone(pipeline().TriggerTime, 'UTC', 'Eastern Standard Time')}\"}",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "reset_dbt_run_status",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "get_dbt_run_status",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "dbt_run_status",
+								"value": {
+									"value": "@string(activity('get_dbt_run_status').output.data.status)",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"timeout": "7.00:00:00"
+				}
+			},
+			{
+				"name": "if_job_failed_throw_error",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "until_dbt_job_finishes",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(variables('dbt_run_status'),'10')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "fail_on_dbt_job_failure",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "dbt job number @{pipeline().parameters.dbt_job_id} failed for run number @{variables('dbt_run_id')}, the status of the job was @{variables('dbt_run_status')}",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "@variables('dbt_run_status')",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"dbt_job_id": {
+				"type": "string"
+			},
+			"dbt_account_id": {
+				"type": "string",
+				"defaultValue": "12345"
+			}
+		},
+		"variables": {
+			"dbt_run_id": {
+				"type": "String"
+			},
+			"dbt_run_status": {
+				"type": "String",
+				"defaultValue": "777"
+			}
+		},
+		"folder": {
+			"name": "5. DBT Curated Functions"
+		},
+		"annotations": [],
+		"lastPublishTime": "2022-04-22T01:55:37Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
