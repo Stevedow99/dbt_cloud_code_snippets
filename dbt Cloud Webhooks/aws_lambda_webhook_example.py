@@ -66,7 +66,7 @@ def lambda_handler(event, context):
     # at this point you can do pretty much anything with the webhook data
     # some examples:
     #   - get the run ID and then call dbt Cloud APIs to pull the run logs then save them to S3
-    #   - kick off some other aws process after testing if the run was sucessful
+    #   - kick off some other aws process after testing if the run was successful
     #   - etc.
     #
     #   for this example, to keep it simple, i'll just save the body to S3 as a JSON file
