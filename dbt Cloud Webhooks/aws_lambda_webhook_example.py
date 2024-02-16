@@ -27,7 +27,7 @@ def lambda_handler(event, context):
     secret_name = "sdsa_dbt_cloud_webhook_auth_token"
     
     # get the payload from the webhook (this is used for auth)
-    webhook_body = event['body']
+    webhook_body = webhook_body = event.get('body', '{}')
     
     # encoding webhook body
     webhook_body_encoded = webhook_body.encode('utf-8')
