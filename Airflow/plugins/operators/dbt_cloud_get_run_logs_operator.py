@@ -30,9 +30,6 @@ class DbtCloudGetRunLogsOperator(BaseOperator):
         self.log_target_directory_path = log_target_directory_path
         self.log_file_name = log_file_name
 
-        # This flag will ensure that multiple outputs are set as separate XComs
-        self.multiple_outputs = True
-
         # Validate the 'log_type' parameter
         if self.log_type not in ['console_logs', 'debug_logs']:
             raise ValueError("Invalid value for log_type. It must be 'console_logs' or 'debug_logs'.")
