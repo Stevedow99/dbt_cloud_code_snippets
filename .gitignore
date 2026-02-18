@@ -1,0 +1,14 @@
+# local test scripts
+test_*.py
+
+# environment / secrets
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
