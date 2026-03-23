@@ -1,0 +1,19 @@
+command:
+  [
+    "uv",
+    "run",
+    "dbt-mcp",
+  ]
+env:
+  - name: MCP_TRANSPORT
+    value: "streamable-http"
+  - name: SETUPTOOLS_SCM_PRETEND_VERSION
+    value: "0.0.0"
+  - name: DBT_HOST
+    value: "us1.dbt.com"
+  - name: DBT_HOST_PREFIX
+    value: "gb971"
+  - name: DBT_TOKEN
+    valueFrom: dbt-token
+  - name: DBT_PROD_ENV_ID
+    value: "123456"
