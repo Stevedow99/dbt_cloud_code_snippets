@@ -1,4 +1,4 @@
-# How to Set Up Databricks dbt MCP
+# How to Set Up The dbt Platform MCP in Databricks (Detailed)
 
 ## Summary
 
