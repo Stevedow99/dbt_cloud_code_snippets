@@ -19,6 +19,16 @@ Databricks apps expect the server to listen on port 8000. FastMCP defaults to po
 - `uv` installed for Python dependency management
 - dbt Platform credentials (API keys, environment IDs, etc.) ready to configure
 
+### Step 0: Authenticate to Your Databricks Workspace
+
+Before deploying your MCP server, authenticate to your workspace using OAuth.
+
+Run the following in a local terminal:
+
+```bash
+databricks auth login --host https://<your-workspace-hostname>
+```
+
 ### Step 1: Clone the dbt-mcp Repository
 
 Clone the dbt-mcp repository from GitHub:
