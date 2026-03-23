@@ -1,4 +1,4 @@
-# How to Set Up Databricks dbt MCP (Concise)
+# How to Set Up The dbt Platform MCP in Databricks (Concise)
 
 ## 0. Authenticate to your Databricks workspace
 
