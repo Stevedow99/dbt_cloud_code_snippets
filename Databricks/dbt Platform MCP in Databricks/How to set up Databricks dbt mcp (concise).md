@@ -1,5 +1,15 @@
 # How to Set Up Databricks dbt MCP (Concise)
 
+## 0. Authenticate to your Databricks workspace
+
+Before deploying your MCP server, authenticate to your workspace using OAuth.
+
+Run the following in a local terminal:
+
+```bash
+databricks auth login --host https://<your-workspace-hostname>
+```
+
 ## 1. Clone the dbt-mcp repository
 
 ```bash
