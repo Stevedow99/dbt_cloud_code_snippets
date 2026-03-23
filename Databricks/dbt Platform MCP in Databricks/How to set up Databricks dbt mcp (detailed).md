@@ -71,7 +71,9 @@ env:
   - name: SETUPTOOLS_SCM_PRETEND_VERSION
     value: "0.0.0"
   - name: DBT_HOST
-    value: "cloud.getdbt.com"
+    value: "<your-dbt-host>"
+  - name: DBT_HOST_PREFIX
+    value: "<your-account-prefix>"
   - name: DBT_TOKEN
     valueFrom: dbt-token
   - name: DBT_PROD_ENV_ID
@@ -97,7 +99,7 @@ env:
 
 Setting `SETUPTOOLS_SCM_PRETEND_VERSION` provides a fallback version string so the package can build without git metadata. The value `0.0.0` is a placeholder — you can set it to any valid version string.
 
-**`env` — dbt Cloud credentials (`DBT_HOST`, `DBT_TOKEN`, `DBT_PROD_ENV_ID`)**: These are the minimum credentials the dbt-mcp server needs to connect to dbt Cloud. `DBT_HOST` and `DBT_PROD_ENV_ID` are set directly as plain values. `DBT_TOKEN` uses `valueFrom` to reference a named resource — Databricks resolves the actual secret value at runtime so the token is never stored in plain text in your repository. The resource must be configured through the Databricks Apps UI (see Step 5a).
+**`env` — dbt Cloud credentials (`DBT_HOST`, `DBT_HOST_PREFIX`, `DBT_TOKEN`, `DBT_PROD_ENV_ID`)**: These are the credentials the dbt-mcp server needs to connect to dbt Cloud. `DBT_HOST` is the base dbt Cloud host **without** the account prefix (e.g. `us1.dbt.com` or `cloud.getdbt.com`). `DBT_HOST_PREFIX` is your account prefix (e.g. `gb971`). Together they construct endpoints like `semantic-layer.gb971.us1.dbt.com`. If your dbt Cloud URL looks like `gb971.us1.dbt.com`, then `DBT_HOST` is `us1.dbt.com` and `DBT_HOST_PREFIX` is `gb971`. `DBT_TOKEN` uses `valueFrom` to reference a named resource — Databricks resolves the actual secret value at runtime so the token is never stored in plain text. The resource must be configured through the Databricks Apps UI (see Step 6).
 
 **Port**: Databricks apps expect the server to listen on port 8000. FastMCP's default port for HTTP transports is 8000, so no port override was needed. If this ever changes, you can add a port environment variable to the `env` section.
 
@@ -146,15 +148,15 @@ print("Secret created successfully.")
 
 ### Step 6: Create the App and Add the Secret Resource
 
-First, create the Databricks app. The name (`dbt-platform-mcp-server`) is whatever you choose — it's not defined anywhere in the codebase, it only lives in Databricks. All subsequent commands that reference the app use this name.
+First, create the Databricks app. The name is whatever you choose — it's not defined anywhere in the codebase, it only lives in Databricks. All subsequent commands that reference the app use this name. **The name must start with `mcp-`** — only apps with this prefix appear as selectable custom MCP servers in the Databricks AI Playground.
 
 ```bash
-databricks apps create dbt-platform-mcp-server
+databricks apps create mcp-dbt-platform
 ```
 
 Then add the dbt token as a secret resource in the UI. The `valueFrom: dbt-token` in `app.yaml` references a **resource** that must be configured through the Databricks Apps UI. Defining a `resources` block in `app.yaml` does not work — resources must be added via the UI.
 
-1. Go to **Compute > Apps > dbt-platform-mcp-server**
+1. Go to **Compute > Apps > mcp-dbt-platform**
 2. Click **Edit** (top right)
 3. In the **App resources** section, click **+ Add resource**
 4. Select **Secret** as the resource type
@@ -174,16 +176,16 @@ Now sync the source code and deploy:
 
 ```bash
 DATABRICKS_USERNAME=$(databricks current-user me | jq -r .userName)
-databricks sync . "/Users/$DATABRICKS_USERNAME/dbt-platform-mcp-server"
+databricks sync . "/Users/$DATABRICKS_USERNAME/mcp-dbt-platform"
 
-databricks apps deploy dbt-platform-mcp-server \
-  --source-code-path "/Workspace/Users/$DATABRICKS_USERNAME/dbt-platform-mcp-server"
+databricks apps deploy mcp-dbt-platform \
+  --source-code-path "/Workspace/Users/$DATABRICKS_USERNAME/mcp-dbt-platform"
 ```
 
 You can check deployment logs with:
 
 ```bash
-databricks apps logs dbt-platform-mcp-server --tail-lines 100
+databricks apps logs mcp-dbt-platform --tail-lines 100
 ```
 
 ### Reference
@@ -230,7 +232,7 @@ The service principal was created at the **account** level, but it also needs to
 
 Once the service principal is assigned to the workspace, grant it permission to use the app.
 
-1. Go back to your workspace: **Compute > Apps > dbt-platform-mcp-server**
+1. Go back to your workspace: **Compute > Apps > mcp-dbt-platform**
 2. Click **Permissions** (top right)
 3. Add the service principal you just created and grant it **Can Use** access
 
@@ -267,7 +269,6 @@ The dbt-mcp server reads its configuration from environment variables. The three
 |---|---|---|
 | `DBT_DEV_ENV_ID` | Development environment ID | SQL tools (`execute_sql`) |
 | `DBT_USER_ID` | Your dbt Cloud user ID | SQL tools (`execute_sql`) |
-| `DBT_HOST_PREFIX` | Multi-tenant account prefix | Multi-tenant dbt Cloud accounts |
 
 To add these, create the corresponding secrets in Databricks and add new `env` entries to `app.yaml` using the `{{secrets/dbt-mcp/...}}` syntax, then redeploy.
 
@@ -324,3 +325,21 @@ print(result)
 result = mcp_client.call_tool("get_model_details", {"unique_id": "model.my_project.my_model"})
 print(result)
 ```
+
+---
+
+## Ways to Use the dbt Platform MCP in Databricks
+
+The notebook approach above is useful for **testing the connection**, but the real value of the MCP server is giving AI tools access to your dbt project. Here's where you can use it:
+
+- **AI Playground** — The quickest way to interact with the MCP. Go to **AI/ML > Playground**, select a model, click **Add tools > MCP Servers > Custom MCP Server**, and select your `mcp-dbt-platform` app. Ask natural language questions like "What are my top metrics by state?" and the LLM will call dbt tools to get the answer.
+
+![Using the dbt MCP in Databricks AI Playground](doc_screenshots/dbt_platform_mcp_ai_platground.png)
+
+- **AI Agents (Mosaic AI Agent Framework)** — Build an agent that connects to the MCP server as a tool source. The agent can reason about your dbt project — querying metrics, exploring lineage, checking model health — and be deployed as a serving endpoint for production use.
+
+- **Genie Spaces** — Genie already has SQL/data integration, but adding the dbt MCP gives it access to semantic layer metrics, model metadata, and lineage context.
+
+- **External AI Applications** — Any MCP-compatible client (Claude Desktop, Cursor, custom apps) can connect to the Databricks-hosted endpoint using the streamable-http transport and the app URL.
+
+![Example: Querying the dbt Semantic Layer from Databricks AI Playground](doc_screenshots/pull_dbt_sl_example.png)
